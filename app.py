@@ -181,10 +181,118 @@ def render_traffic_light_key():
     ) + "</div>"
 
 
+EYFS_DATA = {
+    "manchester": {
+        "areas": {
+            "Gorton": {
+                "metrics": {"Communication": 72, "Physical": 78, "PSED": 74, "Literacy": 69},
+                "schools": {
+                    "St. James": {"Communication": 76, "Physical": 81, "PSED": 79, "Literacy": 72, "Pre School Ready": 74, "Toilet Trained": 82, "Feed Independently": 87},
+                    "Gorton South Primary": {"Communication": 68, "Physical": 75, "PSED": 70, "Literacy": 66, "Pre School Ready": 71, "Toilet Trained": 78, "Feed Independently": 84},
+                },
+            },
+            "Ardwick": {
+                "metrics": {"Communication": 67, "Physical": 73, "PSED": 70, "Literacy": 64},
+                "schools": {
+                    "Ardwick Green": {"Communication": 70, "Physical": 76, "PSED": 72, "Literacy": 67, "Pre School Ready": 69, "Toilet Trained": 75, "Feed Independently": 81},
+                },
+            },
+            "Longsight": {
+                "metrics": {"Communication": 81, "Physical": 84, "PSED": 82, "Literacy": 78},
+                "schools": {
+                    "St. Edmunds": {"Communication": 83, "Physical": 86, "PSED": 84, "Literacy": 80, "Pre School Ready": 79, "Toilet Trained": 88, "Feed Independently": 91},
+                },
+            },
+            "Levenshulme": {
+                "metrics": {"Communication": 76, "Physical": 80, "PSED": 78, "Literacy": 74},
+                "schools": {
+                    "Levenshulme Primary": {"Communication": 78, "Physical": 82, "PSED": 80, "Literacy": 75, "Pre School Ready": 76, "Toilet Trained": 84, "Feed Independently": 89},
+                },
+            },
+        },
+    },
+}
+EYFS_AREA_METRICS = ["Communication", "Physical", "PSED", "Literacy"]
+EYFS_SCHOOL_METRICS = EYFS_AREA_METRICS + ["Pre School Ready", "Toilet Trained", "Feed Independently"]
+
+
+def validate_eyfs_data(data):
+    assert "manchester" in data
+    assert data["manchester"]["areas"]
+    for area in data["manchester"]["areas"].values():
+        assert set(area["metrics"]) == set(EYFS_AREA_METRICS)
+        assert area["schools"]
+        for school in area["schools"].values():
+            assert set(school) == set(EYFS_SCHOOL_METRICS)
+            assert all(0 <= value <= 100 for value in school.values())
+
+
+def traffic_colour(value):
+    if value < 60:
+        return "#d9534f"
+    if value < 75:
+        return "#f0ad4e"
+    return "#5cb85c"
+
+
+def make_eyfs_overview_chart(area_data):
+    area_names = list(area_data)
+    averages = [sum(area_data[name]["metrics"].values()) / len(EYFS_AREA_METRICS) for name in area_names]
+    figure = go.Figure(go.Bar(
+        x=averages,
+        y=area_names,
+        orientation="h",
+        marker_color=[traffic_colour(value) for value in averages],
+        text=[f"{value:.0f}%" for value in averages],
+        textposition="outside",
+        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
+    ))
+    figure.add_vline(x=75, line_dash="dash", line_color="#12343b", annotation_text="75% target")
+    figure.update_layout(
+        title="EYFS Areas Ranked",
+        xaxis={"range": [0, 105], "ticksuffix": "%", "title": None},
+        yaxis={"title": None, "autorange": "reversed"},
+        height=390,
+        margin={"l": 10, "r": 35, "t": 55, "b": 35},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="white",
+        font={"family": "sans-serif", "color": "#334e52"},
+    )
+    return figure
+
+
+def make_eyfs_school_chart(metrics):
+    values = [metrics[name] for name in EYFS_SCHOOL_METRICS]
+    figure = go.Figure(go.Bar(
+        x=EYFS_SCHOOL_METRICS,
+        y=values,
+        marker_color=[traffic_colour(value) for value in values],
+        text=[f"{value}%" for value in values],
+        textposition="outside",
+    ))
+    figure.add_hline(y=75, line_dash="dash", line_color="#12343b", annotation_text="75% target")
+    figure.update_layout(
+        title="School Level Metrics",
+        yaxis={"range": [0, 105], "ticksuffix": "%", "title": None},
+        xaxis={"title": None},
+        height=390,
+        margin={"l": 10, "r": 20, "t": 55, "b": 100},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="white",
+        font={"family": "sans-serif", "color": "#334e52"},
+    )
+    return figure
+
+
 validate_data(df)
 validate_breakdown(BREAKDOWN_DATA)
+validate_eyfs_data(EYFS_DATA)
 if "comparison_wards" not in st.session_state:
     st.session_state.comparison_wards = ["Longsight", "Levenshulme"]
+if "current_level" not in st.session_state:
+    st.session_state.current_level = "manchester"
+if "selected_entity" not in st.session_state:
+    st.session_state.selected_entity = None
 
 st.markdown("<style>h1 { color: #12343b; letter-spacing: 0; } .block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True)
 st.title("Gorton on a page (overview) - high-level")
@@ -224,7 +332,11 @@ def make_chart(metric):
     return figure
 
 
-overview_tab, breakdown_tab = st.tabs(["Ward Overview", "At a Glance Breakdown"])
+overview_tab, breakdown_tab, eyfs_tab = st.tabs([
+    "Ward Overview",
+    "At a Glance Breakdown",
+    "EYFS Performance",
+])
 
 with overview_tab:
     available_wards = [ward for ward in df.index if ward != "Gorton"]
@@ -259,3 +371,66 @@ with breakdown_tab:
     st.markdown(render_traffic_light_key(), unsafe_allow_html=True)
     st.markdown("### Data Summary")
     st.write(build_breakdown_summary(BREAKDOWN_DATA))
+
+with eyfs_tab:
+    manchester_data = EYFS_DATA["manchester"]
+    area_data = manchester_data["areas"]
+
+    if st.session_state.current_level == "manchester":
+        st.subheader("Manchester EYFS Performance")
+        overview_columns = st.columns([2, 1])
+        with overview_columns[0]:
+            st.plotly_chart(
+                make_eyfs_overview_chart(area_data),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+        with overview_columns[1]:
+            st.markdown("#### Drill Down")
+            st.caption("Select an area, then a school, to inspect its detailed measures.")
+            for area_name, area in area_data.items():
+                if st.button(area_name, key=f"eyfs-area-{area_name}", use_container_width=True):
+                    st.session_state.current_level = "area"
+                    st.session_state.selected_entity = area_name
+                    st.rerun()
+                for school_name in area["schools"]:
+                    if st.button(
+                        f"  {school_name}",
+                        key=f"eyfs-school-{area_name}-{school_name}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.current_level = "school"
+                        st.session_state.selected_entity = (area_name, school_name)
+                        st.rerun()
+
+    elif st.session_state.current_level == "area":
+        area_name = st.session_state.selected_entity
+        area = area_data[area_name]
+        st.subheader(f"{area_name} Area Performance")
+        st.write("Choose a school to view its detailed EYFS metrics.")
+        for school_name in area["schools"]:
+            if st.button(school_name, key=f"area-school-{school_name}"):
+                st.session_state.current_level = "school"
+                st.session_state.selected_entity = (area_name, school_name)
+                st.rerun()
+        if st.button("Back to Overview", key="back-from-area"):
+            st.session_state.current_level = "manchester"
+            st.session_state.selected_entity = None
+            st.rerun()
+
+    else:
+        area_name, school_name = st.session_state.selected_entity
+        school_metrics = area_data[area_name]["schools"][school_name]
+        st.subheader(f"{school_name} - {area_name}")
+        metric_columns = st.columns(3)
+        for column, metric_name in zip(metric_columns, ["Pre School Ready", "Toilet Trained", "Feed Independently"]):
+            column.metric(metric_name, f"{school_metrics[metric_name]}%")
+        st.plotly_chart(
+            make_eyfs_school_chart(school_metrics),
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+        if st.button("Back to Overview", key="back-from-school"):
+            st.session_state.current_level = "manchester"
+            st.session_state.selected_entity = None
+            st.rerun()
