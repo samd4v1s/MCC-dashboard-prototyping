@@ -114,6 +114,22 @@ def build_breakdown_summary(frame):
     )
 
 
+TRAFFIC_LIGHT_STYLES = {
+    "red": "background-color:#f8d7da; color:#842029;",
+    "amber": "background-color:#fff3cd; color:#664d03;",
+    "green": "background-color:#d1e7dd; color:#0f5132;",
+}
+
+
+def traffic_light(value):
+    percentage = int(str(value).rstrip("%"))
+    if percentage < 60:
+        return "red"
+    if percentage < 75:
+        return "amber"
+    return "green"
+
+
 def render_breakdown_table(frame):
     """Render the MultiIndex as a table with merged parent headers."""
     parent_headers = []
@@ -134,16 +150,35 @@ def render_breakdown_table(frame):
     rows_html = "".join(
         "<tr>"
         f'<th scope="row">{escape(str(index))}</th>'
-        + "".join(f"<td>{escape(str(value))}</td>" for value in values)
+        + "".join(
+            f'<td style="{TRAFFIC_LIGHT_STYLES[traffic_light(value)]} font-weight:600;">'
+            f"{escape(str(value))}</td>"
+            for value in values
+        )
         + "</tr>"
         for index, values in frame.iterrows()
     )
     return (
         '<table style="width:100%; border-collapse:collapse; text-align:center;">'
-        '<thead><tr><th rowspan="2" style="text-align:left;">Group</th>'
+        '<thead><tr><th rowspan="2" style="text-align:left; padding:8px;">Group</th>'
         f"{header_html}</tr><tr>{subheader_html}</tr></thead>"
         f"<tbody>{rows_html}</tbody></table>"
     )
+
+
+def render_traffic_light_key():
+    key_items = [
+        ("red", "Below 60%"),
+        ("amber", "60% to 74%"),
+        ("green", "75% or above"),
+    ]
+    return "<div style='display:flex; gap:18px; flex-wrap:wrap; margin:12px 0 4px;'>" + "".join(
+        f'<span><span style="display:inline-block; width:13px; height:13px; '
+        f'border-radius:50%; background:{style.split(";")[0].split(":")[1]}; '
+        f'margin-right:6px; vertical-align:-1px;"></span>{label}</span>'
+        for colour, label in key_items
+        for style in [TRAFFIC_LIGHT_STYLES[colour]]
+    ) + "</div>"
 
 
 validate_data(df)
@@ -220,5 +255,7 @@ with overview_tab:
 
 with breakdown_tab:
     st.markdown(render_breakdown_table(BREAKDOWN_DATA), unsafe_allow_html=True)
+    st.markdown("**Traffic light key**", unsafe_allow_html=False)
+    st.markdown(render_traffic_light_key(), unsafe_allow_html=True)
     st.markdown("### Data Summary")
     st.write(build_breakdown_summary(BREAKDOWN_DATA))
