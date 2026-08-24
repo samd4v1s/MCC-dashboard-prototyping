@@ -1,6 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from html import escape
 
 st.set_page_config(
     page_title="Gorton on a page (overview)",
@@ -68,30 +69,91 @@ def build_key_messages(selected_wards):
     ]
 
 
+BREAKDOWN_COLUMNS = pd.MultiIndex.from_tuples([
+    ("CLL", "LA"),
+    ("CLL", "S"),
+    ("PSE", "SR"),
+    ("PSE", "MS"),
+    ("PSE", "BR"),
+    ("PD", "GM"),
+    ("PD", "FM"),
+])
+BREAKDOWN_DATA = pd.DataFrame(
+    [
+        ["58%", "61%", "70%", "73%", "68%", "76%", "72%"],
+        ["64%", "67%", "75%", "78%", "74%", "80%", "77%"],
+        ["55%", "59%", "62%", "65%", "60%", "69%", "66%"],
+        ["49%", "53%", "57%", "60%", "55%", "63%", "61%"],
+        ["71%", "74%", "79%", "82%", "77%", "85%", "83%"],
+    ],
+    index=["Boy", "Girl", "EAL", "SEND", "NAT %"],
+    columns=BREAKDOWN_COLUMNS,
+)
+
+
+def validate_breakdown(frame):
+    assert list(frame.index) == ["Boy", "Girl", "EAL", "SEND", "NAT %"]
+    assert frame.columns.equals(BREAKDOWN_COLUMNS)
+    assert frame.map(lambda value: isinstance(value, str) and value.endswith("%")).all().all()
+
+
+def build_breakdown_summary(frame):
+    """Explain the table using calculated values rather than fixed prose."""
+    boy_cll_la = int(frame.loc["Boy", ("CLL", "LA")].rstrip("%"))
+    girl_cll_la = int(frame.loc["Girl", ("CLL", "LA")].rstrip("%"))
+    gender_gap = girl_cll_la - boy_cll_la
+    direction = "higher" if gender_gap > 0 else "lower" if gender_gap < 0 else "the same as"
+    gap_text = f"{abs(gender_gap)} percentage points {direction} than Boys"
+    group_averages = frame.apply(lambda column: column.str.rstrip("%").astype(float).mean())
+    strongest_metric = group_averages.idxmax()
+    strongest_value = group_averages[strongest_metric]
+    return (
+        f"For CLL - LA, Girls are at {girl_cll_la}% and Boys are at {boy_cll_la}%, "
+        f"so Girls are {gap_text}. Across all five groups, the strongest average "
+        f"result is {strongest_metric[0]} - {strongest_metric[1]} at {strongest_value:.1f}%."
+    )
+
+
+def render_breakdown_table(frame):
+    """Render the MultiIndex as a table with merged parent headers."""
+    parent_headers = []
+    start = 0
+    for column_index, (parent, _) in enumerate(frame.columns):
+        if column_index == 0 or parent != frame.columns[column_index - 1][0]:
+            if column_index:
+                parent_headers[-1]["colspan"] = column_index - start
+            parent_headers.append({"label": parent, "colspan": 1})
+            start = column_index
+    parent_headers[-1]["colspan"] = len(frame.columns) - start
+
+    header_html = "".join(
+        f'<th colspan="{header["colspan"]}">{escape(header["label"])}</th>'
+        for header in parent_headers
+    )
+    subheader_html = "".join(f"<th>{escape(subcategory)}</th>" for _, subcategory in frame.columns)
+    rows_html = "".join(
+        "<tr>"
+        f'<th scope="row">{escape(str(index))}</th>'
+        + "".join(f"<td>{escape(str(value))}</td>" for value in values)
+        + "</tr>"
+        for index, values in frame.iterrows()
+    )
+    return (
+        '<table style="width:100%; border-collapse:collapse; text-align:center;">'
+        '<thead><tr><th rowspan="2" style="text-align:left;">Group</th>'
+        f"{header_html}</tr><tr>{subheader_html}</tr></thead>"
+        f"<tbody>{rows_html}</tbody></table>"
+    )
+
+
 validate_data(df)
+validate_breakdown(BREAKDOWN_DATA)
 if "comparison_wards" not in st.session_state:
     st.session_state.comparison_wards = ["Longsight", "Levenshulme"]
 
 st.markdown("<style>h1 { color: #12343b; letter-spacing: 0; } .block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True)
 st.title("Gorton on a page (overview) - high-level")
 st.caption("A compact view of performance against nearby wards and bespoke thresholds.")
-
-available_wards = [ward for ward in df.index if ward != "Gorton"]
-selected_wards = st.multiselect(
-    "Comparison wards",
-    options=available_wards,
-    default=st.session_state.comparison_wards,
-    help="Gorton is always included as the primary ward.",
-)
-if not selected_wards:
-    selected_wards = [available_wards[0]]
-    st.info(f"Showing Gorton against {selected_wards[0]} until another comparison ward is selected.")
-st.session_state.comparison_wards = selected_wards
-
-chart_wards = ["Gorton"] + selected_wards
-colors = {"Gorton": "#e4572e"}
-colors.update({ward: "#2a9d8f" for ward in selected_wards})
-
 
 def make_chart(metric):
     figure = go.Figure()
@@ -127,12 +189,36 @@ def make_chart(metric):
     return figure
 
 
-st.subheader("Performance by metric")
-chart_columns = st.columns(2)
-for index, metric in enumerate(METRICS):
-    with chart_columns[index % 2]:
-        st.plotly_chart(make_chart(metric), use_container_width=True, config={"displayModeBar": False})
+overview_tab, breakdown_tab = st.tabs(["Ward Overview", "At a Glance Breakdown"])
 
-st.subheader("Key messages (inc. comparisons)")
-for message in build_key_messages(selected_wards):
-    st.markdown(f"- {message}")
+with overview_tab:
+    available_wards = [ward for ward in df.index if ward != "Gorton"]
+    selected_wards = st.multiselect(
+        "Comparison wards",
+        options=available_wards,
+        default=st.session_state.comparison_wards,
+        help="Gorton is always included as the primary ward.",
+    )
+    if not selected_wards:
+        selected_wards = [available_wards[0]]
+        st.info(f"Showing Gorton against {selected_wards[0]} until another comparison ward is selected.")
+    st.session_state.comparison_wards = selected_wards
+
+    chart_wards = ["Gorton"] + selected_wards
+    colors = {"Gorton": "#e4572e"}
+    colors.update({ward: "#2a9d8f" for ward in selected_wards})
+
+    st.subheader("Performance by metric")
+    chart_columns = st.columns(2)
+    for index, metric in enumerate(METRICS):
+        with chart_columns[index % 2]:
+            st.plotly_chart(make_chart(metric), use_container_width=True, config={"displayModeBar": False})
+
+    st.subheader("Key messages (inc. comparisons)")
+    for message in build_key_messages(selected_wards):
+        st.markdown(f"- {message}")
+
+with breakdown_tab:
+    st.markdown(render_breakdown_table(BREAKDOWN_DATA), unsafe_allow_html=True)
+    st.markdown("### Data Summary")
+    st.write(build_breakdown_summary(BREAKDOWN_DATA))
