@@ -3,6 +3,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from html import escape
 
+TLG_COLOURS = {
+    "background": "#faf7f8",
+    "text": "#313130",
+    "lines": ["#1a2792", "#ffb7ff", "#c7ef00", "#f7574b", "#21fa90", "#7f96ff"],
+}
+
 st.set_page_config(
     page_title="Gorton on a page (overview)",
     layout="wide",
@@ -229,10 +235,10 @@ def validate_eyfs_data(data):
 
 def traffic_colour(value):
     if value < 60:
-        return "#d9534f"
+        return TLG_COLOURS["lines"][3]
     if value < 75:
-        return "#f0ad4e"
-    return "#5cb85c"
+        return TLG_COLOURS["lines"][1]
+    return TLG_COLOURS["lines"][2]
 
 
 def make_eyfs_overview_chart(area_data):
@@ -247,16 +253,16 @@ def make_eyfs_overview_chart(area_data):
         textposition="outside",
         hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
     ))
-    figure.add_vline(x=75, line_dash="dash", line_color="#12343b", annotation_text="75% target")
+    figure.add_vline(x=75, line_dash="dash", line_color=TLG_COLOURS["lines"][0], annotation_text="75% target")
     figure.update_layout(
         title="EYFS Areas Ranked",
         xaxis={"range": [0, 105], "ticksuffix": "%", "title": None},
         yaxis={"title": None, "autorange": "reversed"},
         height=390,
         margin={"l": 10, "r": 35, "t": 55, "b": 35},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="white",
-        font={"family": "sans-serif", "color": "#334e52"},
+        paper_bgcolor=TLG_COLOURS["background"],
+        plot_bgcolor=TLG_COLOURS["background"],
+        font={"family": "Arial, Helvetica, sans-serif", "color": TLG_COLOURS["text"]},
     )
     return figure
 
@@ -270,16 +276,16 @@ def make_eyfs_school_chart(metrics):
         text=[f"{value}%" for value in values],
         textposition="outside",
     ))
-    figure.add_hline(y=75, line_dash="dash", line_color="#12343b", annotation_text="75% target")
+    figure.add_hline(y=75, line_dash="dash", line_color=TLG_COLOURS["lines"][0], annotation_text="75% target")
     figure.update_layout(
         title="School Level Metrics",
         yaxis={"range": [0, 105], "ticksuffix": "%", "title": None},
         xaxis={"title": None},
         height=390,
         margin={"l": 10, "r": 20, "t": 55, "b": 100},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="white",
-        font={"family": "sans-serif", "color": "#334e52"},
+        paper_bgcolor=TLG_COLOURS["background"],
+        plot_bgcolor=TLG_COLOURS["background"],
+        font={"family": "Arial, Helvetica, sans-serif", "color": TLG_COLOURS["text"]},
     )
     return figure
 
@@ -294,7 +300,7 @@ if "current_level" not in st.session_state:
 if "selected_entity" not in st.session_state:
     st.session_state.selected_entity = None
 
-st.markdown("<style>h1 { color: #12343b; letter-spacing: 0; } .block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True)
+st.markdown(f"<style>h1 {{ color: {TLG_COLOURS['text']}; letter-spacing: 0; }} .block-container {{ padding-top: 2rem; }}</style>", unsafe_allow_html=True)
 st.title("Gorton on a page (overview) - high-level")
 st.caption("A compact view of performance against nearby wards and bespoke thresholds.")
 
@@ -313,21 +319,21 @@ def make_chart(metric):
     figure.add_hline(
         y=TARGETS[metric],
         line_dash="dot",
-        line_color="#f2a541",
+        line_color=TLG_COLOURS["lines"][0],
         annotation_text=f"Target {TARGETS[metric]}%",
         annotation_position="top left",
     )
     figure.update_layout(
-        title={"text": metric, "x": 0.02, "xanchor": "left", "font": {"size": 18, "color": "#12343b"}},
+        title={"text": metric, "x": 0.02, "xanchor": "left", "font": {"size": 18, "color": TLG_COLOURS["text"]}},
         barmode="group",
         height=300,
         margin={"l": 12, "r": 12, "t": 52, "b": 35},
         yaxis={"range": [0, 105], "ticksuffix": "%", "gridcolor": "#e5e7e9", "title": None},
         xaxis={"title": None},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="white",
+        paper_bgcolor=TLG_COLOURS["background"],
+        plot_bgcolor=TLG_COLOURS["background"],
         legend={"orientation": "h", "y": -0.18},
-        font={"family": "sans-serif", "color": "#334e52"},
+        font={"family": "Arial, Helvetica, sans-serif", "color": TLG_COLOURS["text"]},
     )
     return figure
 
@@ -352,8 +358,11 @@ with overview_tab:
     st.session_state.comparison_wards = selected_wards
 
     chart_wards = ["Gorton"] + selected_wards
-    colors = {"Gorton": "#e4572e"}
-    colors.update({ward: "#2a9d8f" for ward in selected_wards})
+    colors = {"Gorton": TLG_COLOURS["lines"][3]}
+    colors.update({
+        ward: TLG_COLOURS["lines"][index % len(TLG_COLOURS["lines"])]
+        for index, ward in enumerate(selected_wards)
+    })
 
     st.subheader("Performance by metric")
     chart_columns = st.columns(2)
